@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="id">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Sistem Deteksi Bencana Alam</title>
+    <link href="https://fonts.googleapis.com/css2?family=Segoe+UI:wght@400;600&display=swap" rel="stylesheet">
+    <style>
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            margin: 0;
+            font-family: 'Segoe UI', sans-serif;
+            background: #e2e8f0;
+            /* lebih kalem, tidak terlalu terang */
+            color: #1f2937;
+        }
+
+        .container {
+            max-width: 720px;
+            margin: 50px auto;
+            background: #f8fafc;
+            /* abu muda yang tidak menyilaukan */
+            padding: 40px 30px;
+            border-radius: 12px;
+            box-shadow: 0 6px 24px rgba(0, 0, 0, 0.05);
+        }
+
+
+        h1 {
+            text-align: center;
+            font-weight: 600;
+            margin-bottom: 30px;
+            font-size: 24px;
+        }
+
+        .mode-select {
+            display: flex;
+            justify-content: space-between;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        .mode-select input[type="radio"] {
+            display: none;
+        }
+
+        .mode-select label {
+            flex: 1;
+            padding: 10px 12px;
+            background: #e2e8f0;
+            border-radius: 8px;
+            text-align: center;
+            font-weight: 500;
+            cursor: pointer;
+            transition: 0.3s;
+            border: 1px solid #cbd5e1;
+        }
+
+        .mode-select input[type="radio"]:checked+label {
+            background: #2563eb;
+            color: #fff;
+            border-color: #2563eb;
+        }
+
+        input[type="file"] {
+            display: none;
+        }
+
+        .upload-btn {
+            display: inline-block;
+            background: #0d9488;
+            color: white;
+            padding: 10px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+            margin-bottom: 15px;
+        }
+
+        button {
+            width: 100%;
+            background: #facc15;
+            border: none;
+            padding: 12px;
+            font-weight: 600;
+            color: #111827;
+            border-radius: 8px;
+            font-size: 16px;
+            cursor: pointer;
+            margin-top: 20px;
+        }
+
+        .preview {
+            margin-top: 20px;
+        }
+
+        img,
+        video {
+            width: 100%;
+            border-radius: 10px;
+            margin-top: 10px;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.08);
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        .result {
+            margin-top: 30px;
+            background: #ffffff;
+            /* Latar putih */
+            color: #1f2937;
+            /* Teks abu tua */
+            padding: 20px;
+            border-left: 5px solid #2563eb;
+            /* Aksen biru */
+            border-radius: 12px;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.08);
+        }
+
+        @media (max-width: 600px) {
+            .container {
+                padding: 30px 20px;
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div class="container">
+        <h1>Sistem Deteksi Bencana Alam</h1>
+
+        <div class="mode-select">
+            <input type="radio" id="mode-image" name="mode" value="image" checked>
+            <label for="mode-image">Gambar</label>
+
+            <input type="radio" id="mode-video" name="mode" value="video">
+            <label for="mode-video">Video</label>
+
+            <input type="radio" id="mode-realtime" name="mode" value="realtime">
+            <label for="mode-realtime">Realtime</label>
+        </div>
+
+        <form id="predictionForm">
+            <div id="file-upload">
+                <label class="upload-btn" for="fileInput">Pilih File</label>
+                <input type="file" id="fileInput" accept="image/*,video/*" />
+            </div>
+
+            <div id="live-camera" class="hidden">
+                <video id="cameraPreview" autoplay playsinline></video>
+            </div>
+
+            <div class="preview">
+                <img id="imagePreview" class="hidden" alt="Preview Gambar">
+                <video id="videoPreview" class="hidden" controls></video>
+            </div>
+
+            <button type="submit" id="submitBtn">Deteksi Sekarang</button>
+        </form>
+
+        <div id="result" class="result hidden"></div>
+    </div>
+
+    <script>
+        const modeInputs = document.querySelectorAll('input[name="mode"]');
+        const fileUpload = document.getElementById('file-upload');
+        const fileInput = document.getElementById('fileInput');
+        const imagePreview = document.getElementById('imagePreview');
+        const videoPreview = document.getElementById('videoPreview');
+        const liveCamera = document.getElementById('live-camera');
+        const cameraPreview = document.getElementById('cameraPreview');
+        const predictionForm = document.getElementById('predictionForm');
+        const resultBox = document.getElementById('result');
+        let stream = null;
+
+        function resetResult() {
+            resultBox.innerHTML = "";
+            resultBox.classList.add('hidden');
+        }
+
+        modeInputs.forEach(input => {
+            input.addEventListener('change', () => {
+                resetResult();
+                const mode = document.querySelector('input[name="mode"]:checked').value;
+                imagePreview.classList.add('hidden');
+                videoPreview.classList.add('hidden');
+                fileInput.value = '';
+                stopCamera();
+
+                if (mode === 'image' || mode === 'video') {
+                    fileUpload.classList.remove('hidden');
+                    liveCamera.classList.add('hidden');
+                } else {
+                    fileUpload.classList.add('hidden');
+                    liveCamera.classList.remove('hidden');
+                    startCamera();
+                }
+            });
+        });
+
+        fileInput.addEventListener('change', function () {
+            resetResult();
+            const file = this.files[0];
+            if (!file) return;
+
+            const mode = document.querySelector('input[name="mode"]:checked').value;
+
+            if (mode === 'image' && !file.type.startsWith("image/")) {
+                alert("Saat ini Anda berada dalam mode 'Gambar'. Silakan unggah berkas gambar dengan format yang sesuai (jpg, jpeg, png)."); fileInput.value = '';
+                return;
+            }
+
+            if (mode === 'video' && !file.type.startsWith("video/")) {
+                alert("Saat ini Anda berada dalam mode 'Video'. Silakan unggah berkas video dengan format yang sesuai (mp4, avi, atau mov)."); fileInput.value = '';
+                return;
+            }
+
+            const url = URL.createObjectURL(file);
+            if (file.type.startsWith("image/")) {
+                imagePreview.src = url;
+                imagePreview.classList.remove('hidden');
+                videoPreview.classList.add('hidden');
+            } else {
+                videoPreview.src = url;
+                videoPreview.classList.remove('hidden');
+                imagePreview.classList.add('hidden');
+            }
+        });
+
+        function startCamera() {
+            resetResult();
+            navigator.mediaDevices.getUserMedia({ video: true })
+                .then(mediaStream => {
+                    stream = mediaStream;
+                    cameraPreview.srcObject = stream;
+                })
+                .catch(() => alert("Tidak dapat mengakses kamera."));
+        }
+
+        function stopCamera() {
+            if (stream) {
+                stream.getTracks().forEach(track => track.stop());
+                stream = null;
+            }
+        }
+
+        predictionForm.addEventListener('submit', function (e) {
+            e.preventDefault();
+            const mode = document.querySelector('input[name="mode"]:checked').value;
+            const formData = new FormData();
+
+            if (mode === 'image' || mode === 'video') {
+                const file = fileInput.files[0];
+                if (!file) return alert("Silakan pilih file terlebih dahulu.");
+                formData.append("file", file);
+                sendPrediction(formData);
+            } else if (mode === 'realtime') {
+                const canvas = document.createElement('canvas');
+                canvas.width = cameraPreview.videoWidth;
+                canvas.height = cameraPreview.videoHeight;
+                canvas.getContext('2d').drawImage(cameraPreview, 0, 0);
+                canvas.toBlob(blob => {
+                    formData.append("file", blob, "snapshot.png");
+                    sendPrediction(formData);
+                }, 'image/png');
+            }
+        });
+
+        function sendPrediction(formData) {
+            fetch('/predict', {
+                method: 'POST',
+                body: formData
+            })
+                .then(res => res.json())
+                .then(data => {
+                    resultBox.innerHTML = `<h3>Hasil Prediksi:</h3><p>${data.prediction}</p>`;
+                    resultBox.classList.remove('hidden');
+                })
+                .catch(() => {
+                    resultBox.innerHTML = "<p style='color:red;'>Terjadi kesalahan saat memproses permintaan.</p>";
+                    resultBox.classList.remove('hidden');
+                });
+        }
+
+        window.addEventListener("beforeunload", stopCamera);
+    </script>
+</body>
+
+</html>
